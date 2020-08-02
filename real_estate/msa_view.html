@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Metropolian View</title>
+<meta charset="utf-8">
+<link rel="stylesheet" href="nav.css">
+<link rel="stylesheet" href="msa_view.css">
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script type="text/javascript" src="https://d3js.org/queue.v1.min.js"></script>
+<script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script type="text/javascript" src="https://rawgit.com/susielu/d3-annotation/master/d3-annotation.min.js"></script>
+</head>
+<body>
+<!-- Navigation -->
+
+<ul>
+  <li><a href="home.html">Home</a></li>
+  <li><a href="state_view.html">State</a></li>
+  <li><a href="msa_view.html">Metropolitan</a></li>
+  <li><a href="mkt_view.html">Market Analysis</a></li>
+</ul>
+
+<!-- Control -->
+<div>
+	<select style="margin: 10px; width: 300px;" id="msa_dropdown" name="metropolitan"></select>
+	<select style="margin: 10px; width: 300px;" id="msa_dropdown2" name="metropolitan2"></select>
+	<select style="margin: 10px; width: 300px;" id="msa_dropdown3" name="metropolitan3"></select>
+</div>
+
+<!-- Charts -->
+<div>
+	<div class="row">
+		<div id="zhvi_viz" class="column"></div>
+	</div>
+	<div class="row">
+		<div id="zori_viz" class="column"></div>
+	</div>
+	<div class="row">
+		<div id="median_price_viz" class="column"></div>
+	</div>
+</div>
+
+<script type="text/javascript">
+	// tooltip
+	var div = d3.select("body")
+		    .append("div")   
+    		.attr("class", "tooltip")               
+    		.style("opacity", 0);
+
+	// initial zhvi visualization
+	var margin = {top: 30, right: 275, bottom: 30, left: 60},
+		width = 1200 - margin.left - margin.right,
+		height = 300 - margin.top - margin.bottom;
+
+	function build_bar_comp(_id, width, height, margin){
+		return d3.select(_id)
+				 .append("svg")
+			     .attr("width", width + margin.left + margin.right)
+			     .attr("height", height + margin.top + margin.bottom)
+				 .append("g")
+			     .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+	}
+	var zhvi_svg = build_bar_comp("#zhvi_viz", width, height, margin),
+		zori_svg = build_bar_comp("#zori_viz", width, height, margin),
+		median_price_svg = build_bar_comp("#median_price_viz", width, height, margin);
+
+	var data_names = ['zhvi', 'zori', 'median_price'],
+		supp_data_names = ['mean_pending', 'median_pending'],
+		svg_charts = [zhvi_svg, zori_svg, median_price_svg],
+		titles = ['ZHVI Index', 'ZORI Index', 'Median Sale Price'];
+
+	// Initial dropdown
+	$.getJSON("data/msa.json", function(json){
+		var default_values = ['First', 'Second', 'Thrid'],
+			dropdown_ids = ['#msa_dropdown', '#msa_dropdown2', '#msa_dropdown3'];
+		for (var i=0;i<default_values.length;i++){
+			var default_value = default_values[i],
+				_id = dropdown_ids[i];
+
+			$(_id).empty();
+	        $(_id).append($('<option>').text("Select " + default_value + " Metropolitan"));
+	        $.each(json, function(i, obj){
+	        	if (obj.region_name != 'United States'){
+	        		$(_id).append($('<option>').text(obj.region_name).attr('value', obj.region_name));
+	        	}
+	        });
+
+	        // Select event
+		    $('select[id="' + _id.replace('#', '') + '"]').change(function(){
+		    	var metro_names = ['United States']
+		    	for (var j=0;j<dropdown_ids.length;j++){
+		    		_id = dropdown_ids[j];
+		    		var metro_name = $(_id).val();
+		    		if (metro_name.indexOf('Select') == -1 & metro_name.indexOf('Select') == -1){
+		    			metro_names.push(metro_name)
+		    		}
+		    	}
+
+		    	for (var j=0;j<data_names.length;j++){
+					var data_name = data_names[j],
+						svg_chart = svg_charts[j],
+						title = titles[j];
+
+					var svg_data = []
+					for (var k=0;k<metro_names.length;k++){
+						svg_data.push(json[metro_names[k]][data_name]);
+					}
+					draw_line_chart(svg_chart, title, svg_data, metro_names)
+				}
+			});
+		}  
+		
+		function draw_line_chart(comp, header, data, names){
+			comp.selectAll("g > *").remove();
+
+			var x_ranges = [],
+				x_raw_ranges = [],
+				y_ranges = [];
+			for (var i=0;i<data.length;i++){
+				for (var j=0;j<data[i].length;j++){
+					x_ranges.push(new Date(data[i][j].date))
+					x_raw_ranges.push(data[i][j].date)
+					y_ranges.push(parseInt(data[i][j].value))
+				}
+			}
+
+			var x = d3.scaleTime()
+					  .domain(d3.extent(x_ranges))
+			      	  .range([0, width]);
+			var xAxis = d3.axisBottom(x)
+						  .tickFormat(d3.timeFormat("%b %Y"));
+			comp.append("g")
+				.attr("transform", "translate(0," + height + ")")
+				.call(xAxis);
+
+			// Title
+			comp.append("text")
+			    .attr("text-anchor", "start")
+			    .attr("y", -5)
+			    .attr("x", 0)
+			    .text(header)
+			    .style("fill", 'black')
+
+		    // Add Y axis
+		    var y = d3.scaleLinear()
+				      .domain([d3.min(y_ranges) - d3.min(y_ranges)/50, d3.max(y_ranges) + d3.max(y_ranges)/50])
+				      .range([height, 0]);
+			comp.append("g").call(d3.axisLeft(y));
+
+		    // Add line chart
+		    var color = d3.scaleOrdinal()
+    					  .domain(names)
+    					  .range(['#e41a1c','#377eb8', '#4daf4a','#984ea3']);
+    		var y_pos = d3.scaleOrdinal()
+    					  .domain(names)
+    					  .range([0, 20]);
+
+		    for (var i=0;i<data.length;i++){
+		    	// Add line
+		    	comp.append("path")
+			       .datum(data[i])
+			       .attr("fill", "none")
+			       .attr("stroke", color(names[i]))
+			       .attr("stroke-width", 1.5)
+			       .attr("d", d3.line()
+			       		.x(function(d) {return x(new Date(d.date)) })
+			       		.y(function(d) {return y(parseInt(d.value))})
+			    	)
+
+			    // Add line label
+			    comp.append("text")
+			    	.attr("transform", "translate(" + (width+5) + "," + (y(parseInt(data[i][data[i].length-1].value))) + ")")
+					.attr("dy", ".35em")
+					.attr("text-anchor", "start")
+					.style("fill", color(names[i]))
+					.text(names[i]);
+		    }
+
+		    // Annotation
+		    comp.append('rect')
+			   .style("fill", "none")
+			   .style("pointer-events", "all")
+			   .attr('width', width)
+			   .attr('height', height)
+			   .on('mousemove', mousemove)
+			   .on('mouseout', mouseout);
+
+			var bisect = d3.bisector(function(d) {return new Date(d.date); }).left;
+			function mousemove() {
+			    var x0 = x.invert(d3.mouse(this)[0]);
+			    var idx = bisect(data[0], x0);
+		    	div.transition()        
+			      	   .duration(200)
+			           .style("opacity", .9)
+			           .style("height", 10);
+
+			    var curr_date = new Date(data[0][idx].date).toDateString().split(' ')
+
+			    var text = '<b><u>' + 'Date :' + curr_date[1] + ' ' + curr_date[3] + '</u></b>';
+
+			    for (var i=0;i<data.length;i++){
+			    	var value = 0
+			    	if (parseInt(data[i][idx].value) > 100000){
+			    		value = String(parseFloat(data[i][idx].value/1000).toFixed(0)) + 'k'
+			    	} else {
+			    		value = String(parseFloat(data[i][idx].value).toFixed(0))
+			    	}
+
+			    	text += '<br/>' + names[i] + ' Value: ' + value
+
+			    	var supp_data = json[names[i]]
+			    	for (var j=0;j<supp_data_names.length;j++){
+			    		var supp_data_name = ''
+			    		if (supp_data_names[j].indexOf('mean') > -1){
+			    			supp_data_name = 'Mean Pending Days: '
+			    		} else if (supp_data_names[j].indexOf('median') > -1){
+			    			supp_data_name = 'Median Pending Days: '
+			    		}
+			    		text += '<br/>' + supp_data_name + supp_data[supp_data_names[j]][idx].value
+			    	}
+			    	text += '<br/>'
+				}
+
+				div.html(text)
+			       .style("left", (d3.event.pageX) + "px")     
+			       .style("top", (d3.event.pageY) + "px");
+			    
+			}
+			function mouseout() {
+			    div.transition()
+		           .duration(500)      
+		           .style("opacity", 0); 
+			}
+		}
+
+		for (var i=0;i<data_names.length;i++){
+			var data_name = data_names[i],
+				svg_chart = svg_charts[i],
+				title = titles[i];
+			var svg_data = json['United States'][data_name];
+			draw_line_chart(svg_chart, title, [svg_data], ['United States'])
+		}
+    });
+
+</script>
+
+</body>
+</html>

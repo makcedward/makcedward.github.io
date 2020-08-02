@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Trading View</title>
+<meta charset="utf-8">
+<link rel="stylesheet" href="nav.css">
+<link rel="stylesheet" href="msa_view.css">
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script type="text/javascript" src="https://d3js.org/queue.v1.min.js"></script>
+<script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script type="text/javascript" src="https://rawgit.com/susielu/d3-annotation/master/d3-annotation.min.js"></script>
+</head>
+<body>
+<!-- Navigation -->
+
+<ul>
+  <li><a href="index.html">Home</a></li>
+  <li><a href="state_view.html">State</a></li>
+  <li><a href="msa_view.html">Metropolitan</a></li>
+  <li><a href="mkt_view.html">Market Analysis</a></li>
+</ul>
+
+<!-- Control -->
+<div>
+	<select style="margin: 10px; width: 300px;" id="msa_dropdown" name="metropolitan">
+	</select>
+</div>
+
+<!-- Charts -->
+<div>
+	<div class="row">
+		<div id="invt_fs_viz" class="column"></div>
+	</div>
+	<div class="row">
+		<div id="mean_pending_viz" class="column"></div>
+	</div>
+	<div class="row">
+		<div id="median_pending_viz" class="column"></div>
+	</div>
+</div>
+
+<script type="text/javascript">
+	// tooltip
+	var div = d3.select("body")
+		    .append("div")   
+    		.attr("class", "tooltip")               
+    		.style("opacity", 0);
+
+    var num2name = {
+		    		1: 'Jan',
+		    		2: 'Feb',
+		    		3: 'Mar',
+		    		4: 'Apr',
+		    		5: 'May',
+		    		6: 'Jun',
+		    		7: 'Jul',
+		    		8: 'Aug',
+		    		9: 'Sep',
+		    		10: 'Oct',
+		    		11: 'Nov',
+		    		12: 'Dec'
+		    	}
+
+	// initial zhvi visualization
+	var margin = {top: 30, right: 275, bottom: 30, left: 60},
+		width = 1200 - margin.left - margin.right,
+		height = 300 - margin.top - margin.bottom;
+
+	function build_bar_comp(_id, width, height, margin){
+		return d3.select(_id)
+				 .append("svg")
+			     .attr("width", width + margin.left + margin.right)
+			     .attr("height", height + margin.top + margin.bottom)
+				 .append("g")
+			     .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+	}
+	var invt_fs_svg = build_bar_comp("#invt_fs_viz", width, height, margin),
+		mean_pending_svg = build_bar_comp("#mean_pending_viz", width, height, margin),
+		median_pending_svg = build_bar_comp("#median_pending_viz", width, height, margin);
+
+	var data_names = ['invt_fs', 'mean_pending', 'median_pending'],
+		svg_charts = [invt_fs_svg, mean_pending_svg, median_pending_svg],
+		titles = ['For-Sale Inventory', 'Mean Pending Day', 'Median Pending Day'];
+
+	// Initial dropdown
+	$.getJSON("data/trading.json", function(json){
+		var _id = '#msa_dropdown';
+
+		$(_id).empty();
+        $(_id).append($('<option>').text("Select Metropolitan"));
+        $.each(json, function(i, obj){
+        	if (obj.region_name != 'United States'){
+        		$(_id).append($('<option>').text(obj.region_name).attr('value', obj.region_name));
+        	}
+        });
+
+        // Select event
+	    $('select[id="' + _id.replace('#', '') + '"]').change(function(){
+	    	var metro_names = [$(_id).val()]
+	    	
+	    	for (var j=0;j<data_names.length;j++){
+				var data_name = data_names[j],
+					svg_chart = svg_charts[j],
+					title = titles[j];
+
+				var svg_data = []
+				for (var k=0;k<metro_names.length;k++){
+					svg_data.push(json[metro_names[k]][data_name]);
+				}
+
+				draw_bar_chart(svg_chart, title, svg_data, metro_names)
+			}
+		});
+		
+		function draw_bar_chart(comp, header, data, names){
+			comp.selectAll("g > *").remove();
+
+			var x = d3.scaleBand()
+          			  .range([0, width])
+          			  .padding(0.1);
+			var y = d3.scaleLinear()
+			          .range([height, 0]);
+
+			var x_scale = d3.scaleLinear()
+					  .domain([0, width])
+			      	  .range([0, width]);
+
+			x.domain(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']);
+			y.domain([d3.min(data[0]) - d3.min(data[0])/50, d3.max(data[0]) + d3.max(data[0])/50])
+
+			comp.append("g")
+				.attr("transform", "translate(0," + height + ")")
+				.call(d3.axisBottom(x));
+
+			// Title
+			comp.append("text")
+			    .attr("text-anchor", "start")
+			    .attr("y", -5)
+			    .attr("x", 0)
+			    .text(header)
+			    .style("fill", 'black')
+
+		    // Add Y axis
+			comp.append("g").call(d3.axisLeft(y));
+
+		    // Add line chart
+		    var color = d3.scaleOrdinal()
+    					  .domain(names)
+    					  .range(['#e41a1c','#377eb8', '#4daf4a','#984ea3']);
+    		var y_pos = d3.scaleOrdinal()
+    					  .domain(names)
+    					  .range([0, 20]);
+
+		    for (var i=0;i<data.length;i++){
+		    	// Add line
+		    	comp.selectAll('bar')
+		    		.data(data[i])
+		    		.enter()
+		    		.append('rect')
+		    		.style("fill", "steelblue")
+				    .attr("x", function(d, i) { return x(num2name[i+1]); })
+				    .attr("width", x.bandwidth())
+				    .attr("y", function(d) { return y(parseInt(d)); })
+				    .attr("height", function(d) { return height - y(parseInt(d)); })
+				    .on('mousemove', mousemove)
+			   		.on('mouseout', mouseout);
+		    }
+
+		    // Annotation
+			var bisect = d3.bisector(function(d) {return new Date(d.date); }).left;
+			function mousemove(d) {
+		    	div.transition()        
+			      	   .duration(200)
+			           .style("opacity", .9)
+			           .style("height", 10);
+			    var text = '<b><u>' + 'Value :' + d + '</u></b>';
+
+			    for (var i=0;i<data.length;i++){
+			    	var value = 0
+			    	if (parseInt(d) > 100000){
+			    		value = String(parseFloat(d/1000).toFixed(0)) + 'k'
+			    	} else {
+			    		value = String(parseFloat(d).toFixed(0))
+			    	}
+			    	
+					// text += '<br/>' + names[i] + ': ' + value
+				}
+				div.html(text)
+			       .style("left", (d3.event.pageX) + "px")     
+			       .style("top", (d3.event.pageY) + "px");
+			    
+			}
+			function mouseout() {
+			    div.transition()
+		           .duration(500)      
+		           .style("opacity", 0); 
+			}
+		}
+    });
+
+</script>
+
+</body>
+</html>

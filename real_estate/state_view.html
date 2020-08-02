@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>State View</title>
+<meta charset="utf-8">
+<link rel="stylesheet" href="nav.css">
+<link rel="stylesheet" href="map.css">
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script type="text/javascript" src="https://d3js.org/queue.v1.min.js"></script>
+
+<!-- /* http://bl.ocks.org/michellechandra/0b2ce4923dc9b5809922*/
+/*http://bl.ocks.org/TheMapSmith/bd3ef04e33483e671601c753856273cb*/ -->
+</head>
+<body>
+<!-- Navigation -->
+<ul>
+  <li><a href="home.html">Home</a></li>
+  <li><a href="state_view.html">State</a></li>
+  <li><a href="msa_view.html">Metropolitan</a></li>
+  <li><a href="mkt_view.html">Market Analysis</a></li>
+</ul>
+
+<!-- Map -->
+<div id="vis">
+  <button id="play-button">Play</button>
+</div>
+<script type="text/javascript">
+
+/////////////////// Var //////////////
+var width = 960;
+var height = 800;	
+
+
+//////////////////////// Map ///////////////////////////////
+var projection = d3.geoAlbersUsa().translate([width/2, height/2]).scale([1000]);
+var path = d3.geoPath().projection(projection);
+
+var color_domain = [50000, 100000, 150000, 200000, 250000, 300000,350000, 400000, 450000, 500000, 550000, 600000]
+var color_domain2 = [0, 50000, 100000, 150000, 200000, 250000, 300000,350000, 400000, 450000, 500000, 550000, 600000]
+var color_label = ['0', '50k', '100k', '150k', '200k', '250k', '300k', '350k', '400k', '450k', '500k', '550k', '600k']
+var color_range = ["#dcdcdc", "#d0d6cd", "#bdc9be", "#aabdaf", "#97b0a0", "#84a491", "#719782", "#5e8b73", "#4b7e64", "#387255", "#256546", "#125937", "#004d28"]
+var color = d3.scaleThreshold()
+					.domain(color_domain)
+					.range(color_range);
+
+var legendText = ["Cities Lived", "States Lived", "States Visited", "Nada"];
+
+var svg = d3.select("body")
+			.append("svg")
+			.attr("width", width)
+			.attr("height", height);
+        
+
+var div = d3.select("body")
+		    .append("div")   
+    		.attr("class", "tooltip")               
+    		.style("opacity", 0);
+
+var q = queue()
+q.defer(d3.json, "data/us-states.json");
+q.defer(d3.csv, "data/zhvi_state.csv");
+q.defer(d3.json, "data/gdp.json");
+q.await(ready);
+
+
+/////////////////////////////////// Trigger ///////////////////////
+function ready(error, geo_data, state_data, gdp_data) {
+	////////// slider //////////
+	var formatDateIntoYear = d3.timeFormat("%Y");
+	var formatDate = d3.timeFormat("%b %Y");
+	var parseDate = d3.timeParse("%m/%d/%y");
+
+	var startDate = new Date("2000-01-31");
+	var endDate = new Date("2020-06-30");
+
+	var moving = false;
+	var currentValue = 0;
+	var targetValue = width;
+
+	var playButton = d3.select("#play-button");
+	var margin = {top:20, right:25, bottom:0, left:25};
+
+	var svg = d3.select("svg")
+	    .attr("width", width + margin.left + margin.right)
+	    .attr("height", height + margin.top + margin.bottom)
+	    
+	var x = d3.scaleTime()
+	    .domain([startDate, endDate])
+	    .range([0, targetValue])
+	    .clamp(true);
+
+	var slider = svg.append("g")
+	    .attr("class", "slider")
+	    .attr("transform", "translate(" + margin.left + "," + height/15 + ")");
+
+	slider.append("line")
+	    .attr("class", "track")
+	    .attr("x1", x.range()[0])
+	    .attr("x2", x.range()[1])
+	    .select(function() { return this.parentNode.appendChild(this.cloneNode(true)); })
+	    .attr("class", "track-inset")
+	    .select(function() { return this.parentNode.appendChild(this.cloneNode(true)); })
+	    .attr("class", "track-overlay")
+	    .call(d3.drag()
+	        .on("start.interrupt", function() { slider.interrupt(); })
+	        .on("start drag", function() {
+	          currentValue = d3.event.x;
+	          
+	          update(x.invert(currentValue)); 
+	        })
+	    );
+
+	slider.insert("g", ".track-overlay")
+	    .attr("class", "ticks")
+	    .attr("transform", "translate(0," + 18 + ")")
+	    .selectAll("text")
+	    .data(x.ticks(10))
+	    .enter()
+	    .append("text")
+	    .attr("x", x)
+	    .attr("y", 10)
+	    .attr("text-anchor", "middle")
+	    .text(function(d) { return formatDateIntoYear(d); });
+
+	var handle = slider.insert("circle", ".track-overlay")
+	    .attr("class", "handle")
+	    .attr("r", 9);
+	handle.attr("cx", x(endDate));
+
+	var label = slider.append("text")  
+	    .attr("class", "label")
+	    .attr("text-anchor", "middle")
+	    .text(formatDate(endDate))
+	    .attr("transform", "translate(10," + (-25) + ")")
+
+	// Play button
+	playButton.on("click", function() {
+    	var button = d3.select(this);
+    	if (button.text() == "Pause") {
+      		moving = false;
+      		clearInterval(timer);
+      		// timer = 0;
+      		button.text("Play");
+    	} else {
+      		moving = true;
+      	timer = setInterval(step, 100);
+      	button.text("Pause");
+    	}
+  	})
+  	function step() {
+	  update(x.invert(currentValue));
+	  currentValue = currentValue + (targetValue/151);
+	  if (currentValue > targetValue) {
+	    moving = false;
+	    currentValue = 0;
+	    clearInterval(timer);
+	    // timer = 0;
+	    playButton.text("Play");
+	    console.log("Slider moving: " + moving);
+	  }
+	}
+
+	function update(h) {
+		var target_year = h.getFullYear();
+		var target_month = h.getMonth();
+		var target_date = new Date(target_year, target_month + 1, 0).toISOString().substring(0, 10)
+		handle.attr("cx", x(h));
+		label.attr("x", x(h)).text(formatDate(h));
+
+	  	var new_state_data = state_data.filter(function(d) {
+	  		d.displayValue = d[target_date];
+	    	return d;
+	  	})
+	  	var new_gdp_data = gdp_data.filter(function(d){
+	  		year = parseInt(target_date.substring(0, 4))
+	  		d.displayValue = d.gdp[year]
+	  		return d
+	  	})
+
+	  drawPlot(geo_data, new_state_data, new_gdp_data);
+	}
+
+	function drawPlot(geo_data, state_data, gdp_data){
+
+		//============================== Bind data
+		// zhvi data
+		for (var i=0; i<state_data.length; i++){
+			var state_name = state_data[i]['RegionName'],
+				state_size_rank = state_data[i]['SizeRank'];
+			
+			if (! ('displayValue' in state_data[i])) {
+				state_data[i]['displayValue'] = state_data[i]['2020-06-30']
+			}
+			var zhvi_value = state_data[i]['displayValue'];
+			for (var j=0;j<geo_data.features.length;j++){
+				var json_state_name = geo_data.features[j].properties.name;
+				if (json_state_name == state_name){
+					geo_data.features[j].properties.value = parseInt(zhvi_value); 
+					geo_data.features[j].properties.state_size_rank = state_size_rank;
+					break
+				}
+			}
+		}
+		// gdp data
+		for (var i=0; i<gdp_data.length; i++){
+			var state_name = gdp_data[i]['state']
+			if (! ('displayValue' in gdp_data[i])) {
+				gdp_data[i]['displayValue'] = gdp_data[i][2020]
+			}
+			var gdpValue = state_data[i]['displayValue'];
+			for (var j=0;j<geo_data.features.length;j++){
+				var json_state_name = geo_data.features[j].properties.name;
+				if (json_state_name == state_name){
+					geo_data.features[j].properties.gdpValue = parseInt(gdpValue); 
+					break
+				}
+			}
+		}
+
+		//============================== Build map
+		svg.selectAll("path")
+			.data(geo_data.features)
+			.enter()
+			.append("path")
+			.attr("d", path)
+			.style("stroke", "#fff")
+			.style("stroke-width", "1")
+			.style("fill", function(d) {
+				var value = d.properties.value;
+				if (value) {
+					return color(value);
+				} else {
+					return "rgb(213,222,217)";
+				}
+			})
+			.on("mouseover", function(d) {
+		    	div.transition()        
+		      	   .duration(200)
+		           .style("opacity", .9)
+		           .style("height", 10);
+		        text = '<b><u>' + d.properties.name + '</u></b>';
+		        text += '<br/>' + 'ZHVI: ' + String(parseFloat(d.properties.value/1000).toFixed(0)) + 'k';
+		        text += '<br/>' + 'GDP: ' + String(parseFloat(d.properties.gdpValue/1000).toFixed(0)) + 'k';
+		       	text += '<br/>' + 'Size Rank: ' + d.properties.state_size_rank
+
+				div.html(text)
+		           .style("left", (d3.event.pageX) + "px")     
+		           .style("top", (d3.event.pageY - 28) + "px");
+			})
+			.on("mouseout", function(d) {       
+		        div.transition()
+		           .duration(500)      
+		           .style("opacity", 0);   
+		    });
+
+		//============================== Change color
+		svg.selectAll("path")
+			.transition()
+			.duration(200)
+			.style("fill", function(d) {
+				var value = d.properties.value;
+				if (value) {
+					return color(value);
+				} else {
+					return "rgb(213,222,217)";
+				}
+			})
+	}
+	drawPlot(geo_data, state_data, gdp_data);
+
+	//============================== Legend
+	var legend = svg.selectAll("g.legend")
+					.data(color_domain2)
+					.enter().append("g")
+					.attr("class", "legend");
+	var ls_w = 73, ls_h = 20;
+	var legend_title = "ZHVI Index Range";
+	legend.append("text")
+		  .attr("x", 10)
+		  .attr("y", 670)
+		  .attr("class", "legend_title")
+		  .text(function(){return legend_title});
+
+	legend.append("rect")
+		  .attr("x", function(d, i){return width - (i*ls_w) - ls_w;})
+	 	  // .attr("y", 570)
+	 	  .attr("y", 680)
+		  .attr("width", ls_w)
+		  .attr("height", ls_h)
+		  .style("fill", function(d, i) {return color(d);})
+		  .style("opacity", 0.8);
+
+	legend.append("text")
+		  .attr("x", function(d, i){ return width - (i*ls_w) - ls_w;})
+		  .attr("y", 720)
+		  .text(function(d, i){ return color_label[i]; });
+
+	
+}
+</script>
+</body>
+</html>
