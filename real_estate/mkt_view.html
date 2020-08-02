@@ -84,13 +84,34 @@
 
 	// Initial dropdown
 	$.getJSON("data/trading.json", function(json){
+		const queryString = window.location.search;
+		const urlParams = new URLSearchParams(queryString);
+		const selected_metro = urlParams.get('metro')
+
 		var _id = '#msa_dropdown';
 
 		$(_id).empty();
         $(_id).append($('<option>').text("Select Metropolitan"));
         $.each(json, function(i, obj){
         	if (obj.region_name != 'United States'){
-        		$(_id).append($('<option>').text(obj.region_name).attr('value', obj.region_name));
+        		if (selected_metro == null){
+        			$(_id).append($('<option>').text(obj.region_name).attr('value', obj.region_name));
+        		} else {
+        			if (obj.region_name == selected_metro){
+        				$(_id).append($('<option selected>').text(obj.region_name).attr('value', obj.region_name));
+
+        				for (var j=0;j<data_names.length;j++){
+							var data_name = data_names[j],
+								svg_chart = svg_charts[j],
+								title = titles[j];
+
+							var svg_data = [];
+							svg_data.push(json[selected_metro][data_name]);
+
+							draw_bar_chart(svg_chart, title, svg_data, [selected_metro])
+						}
+        			}
+        		}
         	}
         });
 

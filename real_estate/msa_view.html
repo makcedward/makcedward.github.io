@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<title>Metropolian View</title>
+<title>Metropolian</title>
 <meta charset="utf-8">
 <link rel="stylesheet" href="nav.css">
 <link rel="stylesheet" href="msa_view.css">
@@ -67,10 +67,14 @@
 	var data_names = ['zhvi', 'zori', 'median_price'],
 		supp_data_names = ['mean_pending', 'median_pending'],
 		svg_charts = [zhvi_svg, zori_svg, median_price_svg],
-		titles = ['ZHVI Index', 'ZORI Index', 'Median Sale Price'];
+		titles = ['ZHVI', 'ZORI', 'Median Sale Price'];
 
 	// Initial dropdown
 	$.getJSON("data/msa.json", function(json){
+		const queryString = window.location.search;
+		const urlParams = new URLSearchParams(queryString);
+		const state_code = urlParams.get('state_code')
+
 		var default_values = ['First', 'Second', 'Thrid'],
 			dropdown_ids = ['#msa_dropdown', '#msa_dropdown2', '#msa_dropdown3'];
 		for (var i=0;i<default_values.length;i++){
@@ -81,7 +85,13 @@
 	        $(_id).append($('<option>').text("Select " + default_value + " Metropolitan"));
 	        $.each(json, function(i, obj){
 	        	if (obj.region_name != 'United States'){
-	        		$(_id).append($('<option>').text(obj.region_name).attr('value', obj.region_name));
+	        		if (state_code == null){
+	        			$(_id).append($('<option>').text(obj.region_name).attr('value', obj.region_name));
+	        		} else {
+	        			if (obj.region_name.indexOf(', ' + state_code) > -1){
+	        				$(_id).append($('<option>').text(obj.region_name).attr('value', obj.region_name));
+	        			}
+	        		}
 	        	}
 	        });
 
@@ -182,10 +192,21 @@
 			   .style("pointer-events", "all")
 			   .attr('width', width)
 			   .attr('height', height)
+			   .on('click', on_click)
 			   .on('mousemove', mousemove)
 			   .on('mouseout', mouseout);
 
 			var bisect = d3.bisector(function(d) {return new Date(d.date); }).left;
+
+			function on_click(d){
+				var selected_metro = $('#msa_dropdown').val()
+				if (selected_metro.indexOf('Select ') > -1){
+					alert('Please select metropolitan from first dropdown menu')
+				} else {
+					window.open('mkt_view.html?metro='+ selected_metro, '_blank');
+				}
+			}
+
 			function mousemove() {
 			    var x0 = x.invert(d3.mouse(this)[0]);
 			    var idx = bisect(data[0], x0);
